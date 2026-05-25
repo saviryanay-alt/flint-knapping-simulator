@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lithic Knapping Laboratory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-zinc-955 text-zinc-100 font-sans antialiased select-none">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState } = React;
+
+        function FlintKnappingSim() {
+            // --- APPLICATION STATE ---
+            const [selectedMaterial, setSelectedMaterial] = useState('canaanite_flint');
+            const [selectedTool, setSelectedTool] = useState('hard_stone');
+            const [strikeForce, setStrikeForce] = useState(6.5);
+            const [strikeAngle, setStrikeAngle] = useState(72);
+            const [isFaceB, setIsFaceB] = useState(false);
+            const [showTargetOutline, setShowTargetOutline] = useState(true);
+            
+            const [debitage, setDebitage] = useState([]);
+            const [log, setLog] = useState([
+                "System initialized. Core mounted on anvil.",
+                "Objective: Shape the lithic core to match the Canaanite Blade target profile (dashed line).",
+                "Rotate or flip the core to execute alternate bifacial flaking strategies."
+            ]);
+
+            // Initial pristine un-knapped lithic core coordinates (polygon vertices)
+            const [faceAPolygon, setFaceAPolygon] = useState([
+                { x: 200, y: 50 },  { x: 280, y: 110 }, { x: 310, y: 180 },
+                { x: 320, y: 270 }, { x: 260, y: 360 }, { x: 140, y: 360 },
+                { x: 80, y: 270 },  { x: 90, y: 180 },  { x: 120, y: 110 }
+            ]);
+            
+            const [faceBPolygon, setFaceBPolygon] = useState([
+                { x: 200, y: 50 },  { x: 278, y: 112 }, { x: 308, y: 182 },
+                { x: 318, y: 272 }, { x: 258, y: 358 }, { x: 142, y: 358 },
+                { x: 82, y: 272 },  { x: 92, y: 182 },  { x: 122, y: 112 }
+            ]);
+
+            // Target outline blueprint for a Canaanite Blade (Prismatic macroblade profile)
+            const targetOutlinePoints = [
+                { x: 200, y: 65 },  { x: 245, y: 120 }, { x: 240, y: 240 },
+                { x: 225, y: 345 }, { x: 175, y: 345 }, { x: 160, y: 240 },
+                { x: 155, y: 120 }
+            ];
+            const targetOutlineSvgString = targetOutlinePoints.map(p => `${p.x},${p.y}`).join(' ');
+
+            // --- EXPERIMENTAL ARCHAEOLOGY DATA ---
+            const materials = [
+                { id: 'canaanite_flint', name: 'Eocene Flint (Canaanite Type)', brittleness: 0.78, color: '#7c6b58', description: 'High-quality Eocene flint sourced from regional chalk formations. Traditional material for high-standard prismatic blades.' },
+                { id: 'mishash_chert', name: 'Mishash Brecciated Chert', brittleness: 0.62, color: '#594d3f', description: 'Abundant local chert. Contains inclusion lines. Highly prone to sudden step fractures and internal flaws.' },
+                { id: 'obsidian', name: 'Anatolian Obsidian', brittleness: 0.96, color: '#141518', description: 'Volcanic glass. Purely isotropic with zero internal grain structure. Highly responsive to precise pressure flaking.' }
+            ];
+
+            const tools = [
+                { id: 'hard_stone', name: 'Basalt Hammerstone', type: 'hard', efficiency: 0.75, weightGrams: 450, description: 'Hard percussion. Direct high-velocity impact. Removes large cortical flakes and establishes platforms.' },
+                { id: 'antler_billet', name: 'Cervid Antler Billet', type: 'soft', efficiency: 0.88, weightGrams: 180, description: 'Soft percussion. Elastic contact point allows prolonged energy transfer. Critical for bifacial thinning.' },
+                { id: 'pressure_flaker', name: 'Copper-Tipped Pressure Stick', type: 'pressure', efficiency: 0.95, weightGrams: 45, description: 'Statics pressure loading. Micro-shaving mechanism for micro-debitage removal, serration, and edge retouch.' }
+            ];
+
+            // --- MATHEMATICAL ACCURACY EVALUATION ---
+            const calculateCoreAccuracy = () => {
+                const currentPolygon = isFaceB ? faceBPolygon : faceAPolygon;
+                let totalDistance = 0;
+                
+                targetOutlinePoints.forEach((targetPt) => {
+                    let minVertexDist = Infinity;
+                    currentPolygon.forEach((rockPt) => {
+                        const dist = Math.hypot(rockPt.x - targetPt.x, rockPt.y - targetPt.y);
+                        if (dist < minVertexDist) minVertexDist = dist;
+                    });
+                    totalDistance += minVertexDist;
+                });
+
+                const averageError = totalDistance / targetOutlinePoints.length;
+                return Math.max(0, Math.min(100, Math.round(100 - (averageError * 1.4))));
+            };
+
+            // --- LITHIC KNAPPING PHYSICS ENGINE ---
+            const handleCoreStrike = (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                const currentPolygon = isFaceB ? faceBPolygon : faceAPolygon;
+                const activeTool = tools.find(t => t.id === selectedTool);
+                const activeMat = materials.find(m => m.id === selectedMaterial);
+
+                if (!activeTool || !activeMat) return;
+
+                let closestIndex = 0;
+                let minDistance = Infinity;
+                currentPolygon.forEach((pt, index) => {
+                    const dist = Math.hypot(pt.x - clickX, pt.y - clickY);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestIndex = index;
+                    }
+                });
+
+                if (minDistance > 40) {
+                    setLog(prev => ["Kinetic strike dissipated into air. Precision impact missed the platform edge.", ...prev]);
+                    return;
+                }
+
+                let outcome = "Successful Removal";
+                let crackPropagationLengthFactor = 1.0;
+                
+                if (strikeAngle > 86) {
+                    outcome = "Step Fracture (Platform Crushed)";
+                    crackPropagationLengthFactor = 0.15;
+                } else if (strikeAngle < 45) {
+                    outcome = "Hinge Fracture (Premature Termination)";
+                    crackPropagationLengthFactor = 0.35;
+                }
+
+                if (activeMat.id === 'mishash_chert' && Math.random() > 0.65) {
+                    outcome = "Internal Structural Inclusion Break (Shatter)";
+                    crackPropagationLengthFactor = 0.25;
+                }
+
+                if (activeTool.type === 'pressure' && strikeForce > 4.5) {
+                    outcome = "Tool Slip (Excessive Force for Static Instrument)";
+                    crackPropagationLengthFactor = 0.05;
+                } else if (activeTool.type === 'hard' && strikeForce < 3.5) {
+                    outcome = "Fissure Lines Only (Insufficient Force)";
+                    crackPropagationLengthFactor = 0.1;
+                }
+
+                const baseLengthMm = (strikeForce * activeTool.efficiency * activeMat.brittleness) * 4.5;
+                const baseWidthMm = (90 - strikeAngle) * (strikeForce / 2.5) * 1.8;
+                const baseThicknessMm = (strikeForce * (activeTool.weightGrams / 150)) / 1.5;
+
+                const computedLength = Math.max(2, Math.round(baseLengthMm * crackPropagationLengthFactor));
+                const computedWidth = Math.max(3, Math.round(baseWidthMm * (outcome === 'Successful Removal' ? 1.0 : 0.4)));
+                const computedThickness = Math.max(1, Math.round(baseThicknessMm * 10) / 10);
+
+                const centerX = 200;
+                const centerY = 210;
+                
+                const updatedPolygon = currentPolygon.map((pt, index) => {
+                    if (index === closestIndex) {
+                        const dx = centerX - pt.x;
+                        const dy = centerY - pt.y;
+                        const totalLen = Math.hypot(dx, dy);
+                        const deformationMagnitude = computedLength * 0.75;
+                        return {
+                            x: pt.x + (dx / totalLen) * deformationMagnitude,
+                            y: pt.y + (dy / totalLen) * deformationMagnitude
+                        };
+                    }
+                    return pt;
+                });
+
+                if (isFaceB) {
+                    setFaceBPolygon(updatedPolygon);
+                } else {
+                    setFaceAPolygon(updatedPolygon);
+                }
+
+                const flakePointsString = `20,5 35,${10 + computedLength} 5,${10 + computedLength}`;
+
+                const newDebitageFlake = {
+                    id: Math.random().toString(36).substring(2, 11),
+                    step: debitage.length + 1,
+                    tool: activeTool.name,
+                    force: strikeForce,
+                    angle: strikeAngle,
+                    outcome: outcome,
+                    lengthMm: computedLength,
+                    widthMm: computedWidth,
+                    thicknessMm: computedThickness,
+                    points: flakePointsString
+                };
+
+                setDebitage(prev => [newDebitageFlake, ...prev]);
+                setLog(prev => [
+                    `Step #${newDebitageFlake.step}: ${outcome} | Dimensions: ${computedLength}x${computedWidth}x${computedThickness}mm`,
+                    ...prev
+                ]);
+            };
+
+            const handleReset = () => {
+                setFaceAPolygon([
+                    { x: 200, y: 50 },  { x: 280, y: 110 }, { x: 310, y: 180 },
+                    { x: 320, y: 270 }, { x: 260, y: 360 }, { x: 140, y: 360 },
+                    { x: 80, y: 270 },  { x: 90, y: 180 },  { x: 120, y: 110 }
+                ]);
+                setFaceBPolygon([
+                    { x: 200, y: 50 },  { x: 278, y: 112 }, { x: 308, y: 182 },
+                    { x: 318, y: 272 }, { x: 258, y: 358 }, { x: 142, y: 358 },
+                    { x: 82, y: 272 },  { x: 92, y: 182 },  { x: 122, y: 112 }
+                ]);
+                setDebitage([]);
+                setLog(["Simulation reset. Pristine nodules re-mounted."]);
+            };
+
+            const currentScore = calculateCoreAccuracy();
+            const currentMaterialObj = materials.find(m => m.id === selectedMaterial);
+
+            return (
+                <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 lg:p-8 font-sans antialiased">
+                    
+                    {/* HEADER SECTION */}
+                    <header className="border-b border-zinc-800 pb-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-2xl font-black tracking-wider text-amber-500 uppercase">Lithic Knapping Laboratory</h1>
+                                <span className="text-[11px] bg-amber-500/10 text-amber-400 font-bold px-2 py-0.5 rounded border border-amber-500/20 tracking-widest uppercase">Monolithic Core</span>
+                            </div>
+                            <p className="text-xs text-zinc-400 mt-1">Canaanite Blade Replication Matrix • Advanced Chaîne Opératoire Tracking Platform</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-lg flex items-center gap-4">
+                                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Target Match Accuracy:</span>
+                                <span className={`text-xl font-mono font-black ${currentScore > 75 ? 'text-emerald-400' : currentScore > 45 ? 'text-amber-400' : 'text-rose-500'}`}>
+                                    {currentScore}%
+                                </span>
+                            </div>
+                            <button 
+                                onClick={handleReset}
+                                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-bold uppercase tracking-wider rounded-lg transition duration-150"
+                            >
+                                Reset Core
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* THREE-COLUMN DYNAMIC APP WORKSPACE */}
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        
+                        {/* COLUMN 1: KINETIC VARIABLES & INSTRUMENTS */}
+                        <div className="lg:col-span-3 space-y-5 bg-zinc-900/60 p-4 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                            
+                            {/* SECTION A: MATERIAL METRICS */}
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">1. Select Geological Core</label>
+                                <select 
+                                    value={selectedMaterial} 
+                                    onChange={(e) => setSelectedMaterial(e.target.value)}
+                                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-500 transition"
+                                >
+                                    {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                                
+                                <div className="mt-3 p-3 rounded-lg border border-zinc-800 bg-zinc-950/50">
+                                    <p className="text-[11px] text-zinc-300 font-normal leading-relaxed mb-2">
+                                        {currentMaterialObj ? currentMaterialObj.description : ''}
+                                    </p>
+                                    <div className="flex items-center justify-between text-[10px] font-mono border-t border-zinc-850 pt-2 mt-2">
+                                        <span className="text-zinc-500 uppercase">Brittleness Index:</span>
+                                        <span className="text-amber-500 font-bold">{(currentMaterialObj?.brittleness * 100)}%</span>
+                                    </div>
+                                    <div className="w-full bg-zinc-800 h-1 rounded-full mt-1 overflow-hidden">
+                                        <div 
+                                            className="bg-amber-500 h-full transition-all duration-300" 
+                                            style={{ width: `${currentMaterialObj?.brittleness * 100}%` }}
+                                        ></div>
+                                    </div>
+                                    <span className="block text-[9px] text-zinc-500 mt-1 text-left italic">
+                                        {selectedMaterial === 'obsidian' && "* Isotropic Glass: Yields flawless sharp edges with clean margins."}
+                                        {selectedMaterial === 'mishash_chert' && "* Heterogeneous Nodule: High risk of sudden internal fracture lines."}
+                                        {selectedMaterial === 'canaanite_flint' && "* Cryptocrystalline Texture: Ideal setup for uniform prismatic blades."}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* SECTION B: EXTRACTION PERCUSSOR */}
+                            <div className="border-t border-zinc-800/80 pt-4">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">2. Active Percussor / Tool</label>
+                                <div className="space-y-2">
+                                    {tools.map(t => (
+                                        <div 
+                                            key={t.id}
+                                            onClick={() => setSelectedTool(t.id)}
+                                            className={`p-3 rounded-lg border text-left cursor-pointer transition-all duration-150 ${selectedTool === t.id ? 'bg-amber-950/30 border-amber-500 text-amber-200 shadow-sm' : 'bg-zinc-800/40 border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300'}`}
+                                        >
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-xs font-bold tracking-wide">{t.name}</span>
+                                                <span className="text-[10px] font-mono opacity-80 font-bold bg-zinc-900 px-1.5 py-0.5 rounded border border-zinc-800">
+                                                    {t.weightGrams}g
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-zinc-400 mt-1 font-normal leading-tight">{t.description}</p>
+                                            
+                                            {selectedTool === t.id && (
+                                                <div className="mt-2 pt-2 border-t border-amber-500/20 grid grid-cols-2 gap-2 text-[10px] font-mono text-zinc-400">
+                                                    <div>
+                                                        <span className="block text-[8px] text-zinc-500 uppercase">Kinetic Efficiency</span>
+                                                        <span className="text-amber-400 font-bold">{t.efficiency * 100}%</span>
+                                                    </div>
+                                                    <div>
+                                                        <span className="block text-[8px] text-zinc-500 uppercase">Technological Role</span>
+                                                        <span className="text-zinc-300 font-medium">
+                                                            {t.type === 'hard' && 'Initial Decortication'}
+                                                            {t.type === 'soft' && 'Bifacial Thinning'}
+                                                            {t.type === 'pressure' && 'Margin Retouch'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* SECTION C: KINETIC PERCUSSION ENGINES */}
+                            <div className="border-t border-zinc-800/80 pt-4 space-y-4">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400">3. Impact Physics Modifiers</label>
+                                
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1.5">
+                                        <span className="text-zinc-400 font-medium">Kinetic Velocity / Force</span>
+                                        <span className="text-amber-400 font-mono font-black">{strikeForce} Newtons</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="1" max="12" step="0.5" 
+                                        value={strikeForce} onChange={(e) => setStrikeForce(parseFloat(e.target.value))}
+                                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                    />
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1.5">
+                                        <span className="text-zinc-400 font-medium">Striking Platform Angle</span>
+                                        <span className="text-amber-400 font-mono font-black">{strikeAngle}°</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="25" max="105" step="1" 
+                                        value={strikeAngle} onChange={(e) => setStrikeAngle(parseInt(e.target.value))}
+                                        className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                    />
+                                    <div className="flex justify-between text-[10px] text-zinc-500 mt-1.5 font-medium">
+                                        <span>Acute Fracture Angle</span>
+                                        <span>Obtuse Crush Angle</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* COLUMN 2: INTERACTIVE DEFORMATION MATRIX (CORE SVG) */}
+                        <div className="lg:col-span-6 flex flex-col items-center bg-zinc-900 p-5 rounded-xl border border-zinc-800">
+                            
+                            <div className="w-full flex justify-between items-center mb-4 border-b border-zinc-800 pb-3">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Active Structural Plane</span>
+                                    <span className="text-xs font-bold text-amber-400 mt-0.5">
+                                        {isFaceB ? "Face B: Ventral Plane (Backside)" : "Face A: Dorsal Plane (Frontside)"}
+                                    </span>
+                                </div>
+                                
+                                <div className="flex gap-2">
+                                    <button 
+                                        onClick={() => setShowTargetOutline(!showTargetOutline)}
+                                        className={`px-3 py-1.5 rounded-lg border text-xs font-bold uppercase tracking-wider transition ${showTargetOutline ? 'bg-zinc-800 border-amber-500/40 text-amber-400' : 'bg-zinc-800/40 border-zinc-700 text-zinc-500'}`}
+                                    >
+                                        Outline: {showTargetOutline ? "ON" : "OFF"}
+                                    </button>
+                                    <button 
+                                        onClick={() => setIsFaceB(!isFaceB)}
+                                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 border border-amber-700 rounded-lg text-xs font-bold uppercase tracking-wider text-zinc-950 shadow-md transition"
+                                    >
+                                        🔄 Flip Lithic Core
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="relative w-full max-w-[420px] aspect-square bg-zinc-950 rounded-xl border border-zinc-850 overflow-hidden shadow-2xl flex items-center justify-center">
+                                <svg 
+                                    className="w-full h-full cursor-crosshair"
+                                    onClick={handleCoreStrike}
+                                >
+                                    {showTargetOutline && (
+                                        <polygon 
+                                            points={targetOutlineSvgString} 
+                                            fill="none" 
+                                            stroke="rgba(245, 158, 11, 0.35)" 
+                                            strokeWidth="2.5" 
+                                            strokeDasharray="6,5"
+                                        />
+                                    )}
+                                    
+                                    <polygon 
+                                        points={(isFaceB ? faceBPolygon : faceAPolygon).map(p => `${p.x},${p.y}`).join(' ')} 
+                                        fill={currentMaterialObj ? currentMaterialObj.color : '#7c6b58'} 
+                                        stroke="#d4d4d8" 
+                                        strokeWidth="1.5"
+                                        className="transition-all duration-300 ease-out"
+                                    />
+                                </svg>
+
+                                <div className="absolute bottom-3 left-3 bg-zinc-900/90 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] text-zinc-400 font-bold tracking-wider border border-zinc-700 uppercase">
+                                    Mode: {selectedMaterial === 'obsidian' ? 'Isotropic Glass' : 'Conchoidal Nodule'}
+                                </div>
+                            </div>
+
+                            <div className="w-full mt-4 bg-zinc-950 border border-zinc-850 rounded-lg p-3 h-28 overflow-y-auto text-left font-mono text-xs text-zinc-500 space-y-1 shadow-inner">
+                                {log.map((line, idx) => (
+                                    <p key={idx} className={idx === 0 ? "text-amber-400 font-semibold border-l-2 border-amber-500 pl-1.5" : ""}>
+                                        &gt; {line}
+                                    </p>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* COLUMN 3: DEBITAGE COLLECTOR */}
+                        <div className="lg:col-span-3 flex flex-col bg-zinc-900 p-4 rounded-xl border border-zinc-800 h-[560px] lg:h-[585px]">
+                            <div className="border-b border-zinc-800 pb-2.5 mb-3">
+                                <div className="flex justify-between items-center">
+                                    <h3 className="text-xs uppercase tracking-widest font-black text-zinc-400">Debitage Database</h3>
+                                    <span className="font-mono text-xs font-black bg-zinc-800 px-2 py-0.5 rounded text-zinc-300 border border-zinc-700">
+                                        Count: {debitage.length}
+                                    </span>
+                                </div>
+                                <p className="text-[11px] text-zinc-500 mt-0.5 font-normal leading-tight">Controlled inventory tracking Chaîne Opératoire mechanics.</p>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                                {debitage.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-4 border border-dashed border-zinc-800 rounded-xl text-zinc-600">
+                                        <span className="text-lg mb-1">⛏️</span>
+                                        <p className="text-xs font-bold uppercase tracking-wider">No Debitage Recorded</p>
+                                        <p className="text-[11px] text-zinc-500 mt-0.5 lowercase">Strike the core edges to populate flakes.</p>
+                                    </div>
+                                ) : (
+                                    debitage.map((f) => (
+                                        <div key={f.id} className="bg-zinc-950 border border-zinc-850 rounded-lg p-3 flex items-start gap-3 hover:border-zinc-700 transition">
+                                            <svg className="w-12 h-12 bg-zinc-900 rounded-md border border-zinc-800 flex-shrink-0">
+                                                <polygon points={f.points} fill="#8c7765" opacity="0.85" stroke="#a1a1aa" strokeWidth="0.5" />
+                                            </svg>
+                                            
+                                            <div className="text-left w-full">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[9px] font-black font-mono text-amber-500 uppercase tracking-tight bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/10">
+                                                        Nodule #{f.step}
+                                                      </span>
+                                                    <span className="text-[9px] font-mono text-zinc-500">{f.angle}° | {f.force}N</span>
+                                                </div>
+                                                <h4 className="text-xs font-bold text-zinc-300 mt-1 truncate leading-tight">{f.outcome}</h4>
+                                                
+                                                <div className="grid grid-cols-3 gap-1 mt-1.5 text-center text-[10px] font-mono text-zinc-400 bg-zinc-900 p-1 rounded border border-zinc-800/50">
+                                                    <div><span className="block text-[8px] uppercase tracking-tight text-zinc-500 font-sans font-bold">Len</span>{f.lengthMm}mm</div>
+                                                    <div><span className="block text-[8px] uppercase tracking-tight text-zinc-500 font-sans font-bold">Wid</span>{f.widthMm}mm</div>
+                                                    <div><span className="block text-[8px] uppercase tracking-tight text-zinc-500 font-sans font-bold">Thk</span>{f.thicknessMm}mm</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+
+                    {/* SCIENTIFIC INFO BLOCK FOOTER */}
+                    <footer className="mt-8 pt-5 border-t border-zinc-900 grid grid-cols-1 md:grid-cols-3 gap-4 text-left">
+                        <div className="bg-zinc-900/40 border border-zinc-850 p-3 rounded-lg">
+                            <h4 className="text-[11px] font-black uppercase text-amber-500 tracking-wider flex items-center gap-1.5">
+                                <span>💥</span> Conchoidal Fracture Mechanics
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                                Lithic reduction relies on capturing controlled shockwaves traveling through isotropic solids. The kinetic energy forms a Hertzian cone, splitting the rock along predictable, smooth curves.
+                            </p>
+                        </div>
+                        
+                        <div className="bg-zinc-900/40 border border-zinc-850 p-3 rounded-lg">
+                            <h4 className="text-[11px] font-black uppercase text-rose-400 tracking-wider flex items-center gap-1.5">
+                                <span>⚠️</span> Fracture Failure Modes
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                                <strong>Step Fractures</strong> occur when an impact angle is too obtuse, causing the shockwave to snap outward prematurely. 
+                                <strong> Hinges</strong> occur from insufficient force, leaving a rounded, blunt termination.
+                            </p>
+                        </div>
+
+                        <div className="bg-zinc-900/40 border border-zinc-850 p-3 rounded-lg">
+                            <h4 className="text-[11px] font-black uppercase text-emerald-400 tracking-wider flex items-center gap-1.5">
+                                <span>🏺</span> The Canaanite Industry
+                            </h4>
+                            <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                                Characterized by highly specialized workshops during the Bronze Age. Standardized prismatic macroblades were mass-produced from high-quality Eocene flint nodules and distributed across regional trade networks.
+                            </p>
+                        </div>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<FlintKnappingSim />);
+    </script>
+</body>
+</html>
