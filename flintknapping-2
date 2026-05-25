@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Levantine Lithic Technology Laboratory</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 font-sans antialiased select-none">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function FlintKnappingSim() {
+            // --- CONSTANT BLUEPRINTS FOR LEVANTINE STYLES ---
+            const coreStyles = {
+                yabrudian_biface: {
+                    name: 'Acheulo-Yabrudian Biface',
+                    period: 'Lower Paleolithic (ca. 400k-250k BP)',
+                    description: 'Heavy, thick handaxe reduction. Focuses on deep, alternating bifacial marginal flake removals to create a functional, durable butchering edge.',
+                    targetPoints: [
+                        { x: 200, y: 40 },  { x: 270, y: 140 }, { x: 280, y: 260 },
+                        { x: 220, y: 350 }, { x: 180, y: 350 }, { x: 120, y: 260 },
+                        { x: 130, y: 140 }
+                    ],
+                    initialCore: [
+                        { x: 200, y: 30 },  { x: 290, y: 120 }, { x: 310, y: 200 },
+                        { x: 320, y: 280 }, { x: 250, y: 370 }, { x: 150, y: 370 },
+                        { x: 80, y: 280 },  { x: 90, y: 200 },  { x: 110, y: 120 }
+                    ]
+                },
+                levallois_prepared: {
+                    name: 'Levallois Recurrent Core',
+                    period: 'Middle Paleolithic / Mousterian (ca. 250k-45k BP)',
+                    description: 'Prepared core technology. Sculpting the upper face radially (centripetal reduction) to control the lateral and distal convexities before striking off a single predetermined Levallois flake or point.',
+                    targetPoints: [
+                        { x: 200, y: 70 },  { x: 280, y: 130 }, { x: 290, y: 240 },
+                        { x: 240, y: 310 }, { x: 160, y: 310 }, { x: 110, y: 240 },
+                        { x: 120, y: 130 }
+                    ],
+                    initialCore: [
+                        { x: 200, y: 50 },  { x: 295, y: 115 }, { x: 325, y: 195 },
+                        { x: 315, y: 275 }, { x: 265, y: 345 }, { x: 135, y: 345 },
+                        { x: 85, y: 275 },  { x: 75, y: 195 },  { x: 105, y: 115 }
+                    ]
+                },
+                canaanite_blade: {
+                    name: 'Canaanite Prismatic Core',
+                    period: 'Early Bronze Age (ca. 3500-2000 BCE)',
+                    description: 'Highly standardized punch or lever percussion setup. Specialized workshop lithic reduction crafted to peel off uniform, long, parallel-sided macroblades.',
+                    targetPoints: [
+                        { x: 200, y: 65 },  { x: 245, y: 120 }, { x: 240, y: 240 },
+                        { x: 225, y: 345 }, { x: 175, y: 345 }, { x: 160, y: 240 },
+                        { x: 155, y: 120 }
+                    ],
+                    initialCore: [
+                        { x: 200, y: 50 },  { x: 280, y: 110 }, { x: 310, y: 180 },
+                        { x: 320, y: 270 }, { x: 260, y: 360 }, { x: 140, y: 360 },
+                        { x: 80, y: 270 },  { x: 90, y: 180 },  { x: 120, y: 110 }
+                    ]
+                },
+                harifian_microlith: {
+                    name: 'Harifian Micro-Core',
+                    period: 'Epipaleolithic / Natufian Horizon (ca. 10k BCE)',
+                    description: 'Miniaturized reduction geometry. Removes micro-debitage from small, translucent flint pebbles to form microlithic lunates, triangles, or distinctive Harifian hunting points.',
+                    targetPoints: [
+                        { x: 200, y: 120 }, { x: 230, y: 160 }, { x: 235, y: 220 },
+                        { x: 215, y: 270 }, { x: 185, y: 270 }, { x: 165, y: 220 },
+                        { x: 170, y: 160 }
+                    ],
+                    initialCore: [
+                        { x: 200, y: 100 }, { x: 250, y: 140 }, { x: 265, y: 200 },
+                        { x: 255, y: 260 }, { x: 220, y: 300 }, { x: 180, y: 300 },
+                        { x: 145, y: 260 }, { x: 135, y: 200 }, { x: 150, y: 140 }
+                    ]
+                }
+            };
+
+            // --- APPLICATION STATE ---
+            const [activeStyle, setActiveStyle] = React.useState('canaanite_blade');
+            const [selectedMaterial, setSelectedMaterial] = React.useState('canaanite_flint');
+            const [selectedTool, setSelectedTool] = React.useState('hard_stone');
+            const [strikeForce, setStrikeForce] = React.useState(6.5);
+            const [strikeAngle, setStrikeAngle] = React.useState(72);
+            const [isFaceB, setIsFaceB] = React.useState(false);
+            const [showTargetOutline, setShowTargetOutline] = React.useState(true);
+            
+            const [debitage, setDebitage] = React.useState([]);
+            const [log, setLog] = React.useState([
+                "System initialized. Select any Levantine historical style below to shift the baseline profile.",
+                "Strike along the perimeter vertices to remove flakes and monitor target match accuracy."
+            ]);
+
+            // Core coordinates mapped to states
+            const [faceAPolygon, setFaceAPolygon] = React.useState(coreStyles.canaanite_blade.initialCore);
+            const [faceBPolygon, setFaceBPolygon] = React.useState(coreStyles.canaanite_blade.initialCore);
+
+            // Handle switching between different Levantine technologies
+            const handleStyleChange = (styleKey) => {
+                setActiveStyle(styleKey);
+                setFaceAPolygon(coreStyles[styleKey].initialCore);
+                setFaceBPolygon(coreStyles[styleKey].initialCore);
+                setDebitage([]);
+                setLog([
+                    `Shifted technological paradigm to: ${coreStyles[styleKey].name}.`,
+                    `Target outline updated to reflect ${coreStyles[styleKey].period} mechanics.`
+                ]);
+            };
+
+            // --- ARCHAEOLOGICAL LOGISTICS & DATA ---
+            const materials = [
+                { id: 'canaanite_flint', name: 'Eocene Translucent Flint (Levant High-Grade)', brittleness: 0.78, color: '#7c6b58', description: 'High-quality Eocene flint sourced from Eocene chalk cliffs across Israel and Jordan. Highly predictable conchoidal fracture.' },
+                { id: 'mishash_chert', name: 'Mishash Brecciated Chert', brittleness: 0.62, color: '#594d3f', description: 'Chert from the upper cretaceous Mishash formation. Often contains fractures, requiring severe percussion energy.' },
+                { id: 'transjordan_brown', name: 'Transjordanian Nodular Brown Flint', brittleness: 0.84, color: '#4d3b2c', description: 'Homogeneous dark brown flint nodules found in desert pavements and wadi beds. Responds crisp to soft hammer thinning.' }
+            ];
+
+            const tools = [
+                { id: 'hard_stone', name: 'Basalt/Wadi Pebble Hammerstone', type: 'hard', efficiency: 0.75, weightGrams: 450, description: 'Direct percussion. Generates wide bulbs of force. Excellent for primary decortication and Levallois platform prepping.' },
+                { id: 'antler_billet', name: 'Gazelle/Cervid Antler Punch', type: 'soft', efficiency: 0.88, weightGrams: 180, description: 'Soft percussion or indirect punch setup. Elastic contact spreads energy, crucial for thin blade blank production.' },
+                { id: 'pressure_flaker', name: 'Bone/Copper Retouching Stick', type: 'pressure', efficiency: 0.95, weightGrams: 45, description: 'Static pressure tool. Perfect for micro-shaving edges to create Epipaleolithic microliths or serrating arrowheads.' }
+            ];
+
+            // --- ACCURACY METRICS EVALUATION ---
+            const calculateCoreAccuracy = () => {
+                const currentPolygon = isFaceB ? faceBPolygon : faceAPolygon;
+                const targetPoints = coreStyles[activeStyle].targetPoints;
+                let totalDistance = 0;
+                
+                targetPoints.forEach((targetPt) => {
+                    let minVertexDist = Infinity;
+                    currentPolygon.forEach((rockPt) => {
+                        const dist = Math.hypot(rockPt.x - targetPt.x, rockPt.y - targetPt.y);
+                        if (dist < minVertexDist) minVertexDist = dist;
+                    });
+                    totalDistance += minVertexDist;
+                });
+
+                const averageError = totalDistance / targetPoints.length;
+                return Math.max(0, Math.min(100, Math.round(100 - (averageError * 1.5))));
+            };
+
+            // --- LITHIC REDUCTION PHYSICS ENGINE ---
+            const handleCoreStrike = (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const clickX = e.clientX - rect.left;
+                const clickY = e.clientY - rect.top;
+
+                const currentPolygon = isFaceB ? faceBPolygon : faceAPolygon;
+                const activeTool = tools.find(t => t.id === selectedTool);
+                const activeMat = materials.find(m => m.id === selectedMaterial);
+
+                if (!activeTool || !activeMat) return;
+
+                let closestIndex = 0;
+                let minDistance = Infinity;
+                currentPolygon.forEach((pt, index) => {
+                    const dist = Math.hypot(pt.x - clickX, pt.y - clickY);
+                    if (dist < minDistance) {
+                        minDistance = dist;
+                        closestIndex = index;
+                    }
+                });
+
+                if (minDistance > 45) {
+                    setLog(prev => ["Impact missed edge platform structure.", ...prev]);
+                    return;
+                }
+
+                let outcome = "Successful Removal";
+                let crackPropagationLengthFactor = 1.0;
+                
+                if (strikeAngle > 88) {
+                    outcome = "Step Fracture (Crushed Edge)";
+                    crackPropagationLengthFactor = 0.15;
+                } else if (strikeAngle < 42) {
+                    outcome = "Hinge Fracture (Abrupt Rollout Outflow)";
+                    crackPropagationLengthFactor = 0.35;
+                }
+
+                if (activeMat.id === 'mishash_chert' && Math.random() > 0.6) {
+                    outcome = "Material Inclusion Failure (Shatter)";
+                    crackPropagationLengthFactor = 0.2;
+                }
+
+                const baseLengthMm = (strikeForce * activeTool.efficiency * activeMat.brittleness) * 4.8;
+                const baseWidthMm = (90 - strikeAngle) * (strikeForce / 2.2) * 1.6;
+                const baseThicknessMm = (strikeForce * (activeTool.weightGrams / 160)) / 1.6;
+
+                const computedLength = Math.max(2, Math.round(baseLengthMm * crackPropagationLengthFactor));
+                const computedWidth = Math.max(3, Math.round(baseWidthMm * (outcome === 'Successful Removal' ? 1.0 : 0.4)));
+                const computedThickness = Math.max(1, Math.round(baseThicknessMm * 10) / 10);
+
+                const centerX = 200;
+                const centerY = 210;
+                
+                const updatedPolygon = currentPolygon.map((pt, index) => {
+                    if (index === closestIndex) {
+                        const dx = centerX - pt.x;
+                        const dy = centerY - pt.y;
+                        const totalLen = Math.hypot(dx, dy);
+                        const deformationMagnitude = computedLength * 0.7;
+                        return {
+                            x: pt.x + (dx / totalLen) * deformationMagnitude,
+                            y: pt.y + (dy / totalLen) * deformationMagnitude
+                        };
+                    }
+                    return pt;
+                });
+
+                if (isFaceB) {
+                    setFaceBPolygon(updatedPolygon);
+                } else {
+                    setFaceAPolygon(updatedPolygon);
+                }
+
+                const newDebitageFlake = {
+                    id: Math.random().toString(36).substring(2, 11),
+                    step: debitage.length + 1,
+                    tool: activeTool.name,
+                    force: strikeForce,
+                    angle: strikeAngle,
+                    outcome: outcome,
+                    lengthMm: computedLength,
+                    widthMm: computedWidth,
+                    thicknessMm: computedThickness,
+                    points: `20,5 35,${10 + computedLength} 5,${10 + computedLength}`
+                };
+
+                setDebitage(prev => [newDebitageFlake, ...prev]);
+                setLog(prev => [
+                    `Flake #${newDebitageFlake.step}: ${outcome} (${computedLength}x${computedWidth}mm) removed via ${activeTool.name}.`,
+                    ...prev
+                ]);
+            };
+
+            const currentScore = calculateCoreAccuracy();
+            const currentMaterialObj = materials.find(m => m.id === selectedMaterial);
+            const targetOutlineSvgString = coreStyles[activeStyle].targetPoints.map(p => `${p.x},${p.y}`).join(' ');
+
+            return (
+                <div className="min-h-screen bg-zinc-950 text-zinc-100 p-4 lg:p-8 font-sans antialiased">
+                    
+                    {/* LEVANT REGIONAL HEADER */}
+                    <header className="border-b border-zinc-800 pb-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                        <div>
+                            <div className="flex items-center gap-3">
+                                <h1 className="text-2xl font-black tracking-wider text-amber-500 uppercase">Levantine Lithic Technology Lab</h1>
+                                <span className="text-[11px] bg-amber-500/10 text-amber-400 font-bold px-2 py-0.5 rounded border border-amber-500/20 tracking-widest uppercase">Levant Matrix</span>
+                            </div>
+                            <p className="text-xs text-zinc-400 mt-1">Comparative Analysis of Lithic Reduction and Chaîne Opératoire Across Levantine Cultural Sequences</p>
+                        </div>
+                        
+                        <div className="flex items-center gap-3 w-full md:w-auto">
+                            <div className="bg-zinc-900 border border-zinc-800 px-4 py-2 rounded-lg flex items-center gap-4">
+                                <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider">Historical Silhouette Typology Match:</span>
+                                <span className={`text-xl font-mono font-black ${currentScore > 75 ? 'text-emerald-400' : currentScore > 45 ? 'text-amber-400' : 'text-rose-500'}`}>
+                                    {currentScore}%
+                                </span>
+                            </div>
+                            <button 
+                                onClick={() => handleStyleChange(activeStyle)}
+                                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-zinc-600 text-zinc-200 text-xs font-bold uppercase tracking-wider rounded-lg transition"
+                            >
+                                Reset Current Core
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* DYNAMIC PARADIGM PICKER BAR */}
+                    <div className="mb-6 grid grid-cols-2 md:grid-cols-4 gap-3">
+                        {Object.keys(coreStyles).map((key) => (
+                            <button
+                                key={key}
+                                onClick={() => handleStyleChange(key)}
+                                className={`p-3 text-left rounded-xl border transition-all ${activeStyle === key ? 'bg-amber-950/20 border-amber-500 text-amber-300' : 'bg-zinc-900/50 border-zinc-800 text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'}`}
+                            >
+                                <div className="text-xs font-bold truncate">{coreStyles[key].name}</div>
+                                <div className="text-[10px] font-mono text-zinc-500 mt-0.5 truncate">{coreStyles[key].period}</div>
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                        
+                        {/* COLUMN 1: CONTROLS */}
+                        <div className="lg:col-span-3 space-y-5 bg-zinc-900/60 p-4 rounded-xl border border-zinc-800 backdrop-blur-sm">
+                            <div>
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Active Levantine Sourced Material</label>
+                                <select 
+                                    value={selectedMaterial} 
+                                    onChange={(e) => setSelectedMaterial(e.target.value)}
+                                    className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-xs text-zinc-200 font-medium focus:outline-none focus:border-amber-500 transition"
+                                >
+                                    {materials.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+                                </select>
+                                <p className="text-[11px] text-zinc-400 mt-2 leading-relaxed bg-zinc-950/40 p-2 rounded border border-zinc-850">{currentMaterialObj?.description}</p>
+                            </div>
+
+                            <div className="border-t border-zinc-800/80 pt-4">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-2">Percussor Element</label>
+                                <div className="space-y-2">
+                                    {tools.map(t => (
+                                        <div 
+                                            key={t.id}
+                                            onClick={() => setSelectedTool(t.id)}
+                                            className={`p-3 rounded-lg border text-left cursor-pointer transition ${selectedTool === t.id ? 'bg-amber-950/30 border-amber-500 text-amber-200' : 'bg-zinc-800/40 border-zinc-700 text-zinc-400 hover:bg-zinc-800'}`}
+                                        >
+                                            <div className="flex justify-between items-center text-xs font-bold">
+                                                <span>{t.name}</span>
+                                                <span className="font-mono text-[10px] opacity-70 bg-zinc-900 px-1 py-0.2 rounded">{t.weightGrams}g</span>
+                                            </div>
+                                            <p className="text-[11px] text-zinc-400 mt-1 font-normal leading-tight">{t.description}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="border-t border-zinc-800/80 pt-4 space-y-4">
+                                <label className="block text-[10px] font-black uppercase tracking-widest text-zinc-400">Striking Variables</label>
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1.5">
+                                        <span className="text-zinc-400 font-medium">Kinetic Impact Force</span>
+                                        <span className="text-amber-400 font-mono font-black">{strikeForce} N</span>
+                                    </div>
+                                    <input type="range" min="1" max="12" step="0.5" value={strikeForce} onChange={(e) => setStrikeForce(parseFloat(e.target.value))} className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1.5">
+                                        <span className="text-zinc-400 font-medium">Striking Platform Angle</span>
+                                        <span className="text-amber-400 font-mono font-black">{strikeAngle}°</span>
+                                    </div>
+                                    <input type="range" min="25" max="105" step="1" value={strikeAngle} onChange={(e) => setStrikeAngle(parseInt(e.target.value))} className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-amber-500" />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* COLUMN 2: WORKBENCH CANVAS */}
+                        <div className="lg:col-span-6 flex flex-col items-center bg-zinc-900 p-5 rounded-xl border border-zinc-800">
+                            <div className="w-full flex justify-between items-center mb-4 border-b border-zinc-800 pb-3">
+                                <div className="text-left">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Active Paradigm Concept Context</span>
+                                    <div className="text-xs font-bold text-amber-400 leading-tight">{coreStyles[activeStyle].name}</div>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={() => setShowTargetOutline(!showTargetOutline)} className={`px-3 py-1.5 rounded-lg border text-xs font-bold transition ${showTargetOutline ? 'bg-zinc-800 border-amber-500/40 text-amber-400' : 'bg-zinc-800/40 border-zinc-700 text-zinc-500'}`}>Outline</button>
+                                    <button onClick={() => setIsFaceB(!isFaceB)} className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 rounded-lg text-xs font-bold text-zinc-950 transition">🔄 Flip Core</button>
+                                </div>
+                            </div>
+
+                            <div className="relative w-full max-w-[420px] aspect-square bg-zinc-950 rounded-xl border border-zinc-800 overflow-hidden shadow-2xl flex items-center justify-center">
+                                <svg className="w-full h-full cursor-crosshair" onClick={handleCoreStrike}>
+                                    {showTargetOutline && (
+                                        <polygon points={targetOutlineSvgString} fill="none" stroke="rgba(245, 158, 11, 0.4)" strokeWidth="2.5" strokeDasharray="5,5" />
+                                    )}
+                                    <polygon points={(isFaceB ? faceBPolygon : faceAPolygon).map(p => `${p.x},${p.y}`).join(' ')} fill={currentMaterialObj ? currentMaterialObj.color : '#7c6b58'} stroke="#e4e4e7" strokeWidth="1.5" className="transition-all duration-300" />
+                                </svg>
+                            </div>
+
+                            <div className="w-full mt-4 bg-zinc-950 border border-zinc-800 rounded-lg p-3 h-28 overflow-y-auto text-left font-mono text-xs text-zinc-500 space-y-1 shadow-inner">
+                                {log.map((line, idx) => (
+                                    <p key={idx} className={idx === 0 ? "text-amber-400 border-l-2 border-amber-500 pl-1.5" : ""}>&gt; {line}</p>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* COLUMN 3: DEBITAGE DATA LIST */}
+                        <div className="lg:col-span-3 flex flex-col bg-zinc-900 p-4 rounded-xl border border-zinc-800 h-[560px] lg:h-[615px]">
+                            <div className="border-b border-zinc-800 pb-2.5 mb-3 text-left">
+                                <h3 className="text-xs uppercase tracking-widest font-black text-zinc-400">Debitage Database</h3>
+                                <p className="text-[11px] text-zinc-500 mt-0.5 leading-tight">Flakes detached during sequence</p>
+                            </div>
+
+                            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                                {debitage.length === 0 ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-center p-4 text-zinc-600">
+                                        <p className="text-xs font-bold uppercase tracking-wider">No Debitage Yet</p>
+                                    </div>
+                                ) : (
+                                    debitage.map((f) => (
+                                        <div key={f.id} className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-left space-y-1.5">
+                                            <div className="flex justify-between items-center text-[9px] font-mono">
+                                                <span className="text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">Flake #{f.step}</span>
+                                                <span className="text-zinc-500">{f.angle}° | {f.force}N</span>
+                                            </div>
+                                            <h4 className="text-xs font-bold text-zinc-300 truncate">{f.outcome}</h4>
+                                            <div className="grid grid-cols-2 gap-1 text-center text-[10px] font-mono text-zinc-400 bg-zinc-900 p-1 rounded border border-zinc-800/40">
+                                                <div>Length: {f.lengthMm}mm</div>
+                                                <div>Width: {f.widthMm}mm</div>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<FlintKnappingSim />);
+    </script>
+</body>
+</html>
